@@ -1,0 +1,11 @@
+{
+  "posts": [
+    { "id": "1", "title": "a title", "views": 100, "isDeleted": false },
+    { "id": "2", "title": "another title", "views": 200, "isDeleted": false }
+  ],
+  "comments": [
+    { "id": "1", "postId": "1", "body": "some comment" },
+    { "id": "2", "postId": "1", "body": "another comment" },
+    { "id": "3", "postId": "2", "body": "a comment on post 2" }
+  ]
+}

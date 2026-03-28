@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test API</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 20px auto; padding: 0 20px; }
+    h1, h2, h3 { color: #333; }
+    .deleted { text-decoration: line-through; color: #999; }
+    ul { list-style: none; padding: 0; }
+    li { padding: 8px; margin: 4px 0; background: #f5f5f5; border-radius: 4px; }
+    button { margin-left: 8px; cursor: pointer; padding: 2px 8px; }
+    input, textarea { padding: 6px; margin: 4px; }
+    .form-section { margin: 16px 0; padding: 16px; background: #e8f4fd; border-radius: 8px; }
+    .comment-item { margin-left: 20px; background: #fafafa; }
+    hr { margin: 30px 0; }
+  </style>
+</head>
+<body>
+
+<h1>Quản lý bài viết (Posts)</h1>
+
+<!-- Form tạo / sửa Post -->
+<div class="form-section">
+  <h3 id="postFormTitle">Tạo bài viết mới</h3>
+  <input type="hidden" id="postEditId">
+  <input type="text" id="postTitle" placeholder="Tiêu đề">
+  <input type="number" id="postViews" placeholder="Lượt xem">
+  <button onclick="savePost()">Lưu</button>
+  <button onclick="resetPostForm()">Huỷ</button>
+</div>
+
+<ul id="postList"></ul>
+
+<hr>
+
+<h1>Quản lý bình luận (Comments)</h1>
+
+<!-- Form tạo / sửa Comment -->
+<div class="form-section">
+  <h3 id="commentFormTitle">Tạo bình luận mới</h3>
+  <input type="hidden" id="commentEditId">
+  <input type="text" id="commentPostId" placeholder="Post ID">
+  <input type="text" id="commentBody" placeholder="Nội dung bình luận">
+  <button onclick="saveComment()">Lưu</button>
+  <button onclick="resetCommentForm()">Huỷ</button>
+</div>
+
+<ul id="commentList"></ul>
+
+<script>
+const API = "http://localhost:3000";
+
+// ======================== POSTS ========================
+
+// Lấy max ID của posts để tự tăng
+async function getNextPostId() {
+  const res = await fetch(API + "/posts");
+  const posts = await res.json();
+  if (posts.length === 0) return "1";
+  const maxId = Math.max(...posts.map(p => Number(p.id)));
+  return String(maxId + 1);
+}
+
+// Load và hiển thị danh sách posts
+async function loadPosts() {
+  const res = await fetch(API + "/posts");
+  const posts = await res.json();
+  const list = document.getElementById("postList");
+  list.innerHTML = "";
+
+  posts.forEach(post => {
+    const li = document.createElement("li");
+
+    // Nếu bị xoá mềm thì gạch ngang
+    if (post.isDeleted) {
+      li.className = "deleted";
+    }
+
+    li.innerHTML =
+      "<strong>" + post.id + "</strong>: " + post.title + " - " + post.views +
+      (post.isDeleted ? " [Đã xoá]" : "") +
+      ' <button onclick="editPost(\'' + post.id + '\')">Sửa</button>' +
+      (post.isDeleted
+        ? ' <button onclick="restorePost(\'' + post.id + '\')">Khôi phục</button>'
+        : ' <button onclick="softDeletePost(\'' + post.id + '\')">Xoá</button>');
+
+    list.appendChild(li);
+  });
+}
+
+// Tạo hoặc cập nhật post
+async function savePost() {
+  const editId = document.getElementById("postEditId").value;
+  const title = document.getElementById("postTitle").value;
+  const views = Number(document.getElementById("postViews").value);
+
+  if (!title) { alert("Vui lòng nhập tiêu đề!"); return; }
+
+  if (editId) {
+    // Cập nhật (PUT)
+    await fetch(API + "/posts/" + editId, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: editId, title: title, views: views, isDeleted: false })
+    });
+  } else {
+    // Tạo mới - ID tự tăng = maxId + 1
+    const newId = await getNextPostId();
+    await fetch(API + "/posts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: newId, title: title, views: views, isDeleted: false })
+    });
+  }
+
+  resetPostForm();
+  loadPosts();
+}
+
+// Xoá mềm: cập nhật isDeleted = true
+async function softDeletePost(id) {
+  const res = await fetch(API + "/posts/" + id);
+  const post = await res.json();
+  post.isDeleted = true;
+
+  await fetch(API + "/posts/" + id, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(post)
+  });
+  loadPosts();
+}
+
+// Khôi phục: cập nhật isDeleted = false
+async function restorePost(id) {
+  const res = await fetch(API + "/posts/" + id);
+  const post = await res.json();
+  post.isDeleted = false;
+
+  await fetch(API + "/posts/" + id, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(post)
+  });
+  loadPosts();
+}
+
+// Điền form để sửa post
+async function editPost(id) {
+  const res = await fetch(API + "/posts/" + id);
+  const post = await res.json();
+
+  document.getElementById("postEditId").value = post.id;
+  document.getElementById("postTitle").value = post.title;
+  document.getElementById("postViews").value = post.views;
+  document.getElementById("postFormTitle").innerText = "Sửa bài viết (ID: " + post.id + ")";
+}
+
+function resetPostForm() {
+  document.getElementById("postEditId").value = "";
+  document.getElementById("postTitle").value = "";
+  document.getElementById("postViews").value = "";
+  document.getElementById("postFormTitle").innerText = "Tạo bài viết mới";
+}
+
+// ======================== COMMENTS ========================
+
+// Lấy max ID của comments để tự tăng
+async function getNextCommentId() {
+  const res = await fetch(API + "/comments");
+  const comments = await res.json();
+  if (comments.length === 0) return "1";
+  const maxId = Math.max(...comments.map(c => Number(c.id)));
+  return String(maxId + 1);
+}
+
+// Load và hiển thị danh sách comments
+async function loadComments() {
+  const res = await fetch(API + "/comments");
+  const comments = await res.json();
+  const list = document.getElementById("commentList");
+  list.innerHTML = "";
+
+  comments.forEach(comment => {
+    const li = document.createElement("li");
+    li.className = "comment-item";
+    li.innerHTML =
+      "<strong>Comment " + comment.id + "</strong> (Post " + comment.postId + "): " + comment.body +
+      ' <button onclick="editComment(\'' + comment.id + '\')">Sửa</button>' +
+      ' <button onclick="deleteComment(\'' + comment.id + '\')">Xoá</button>';
+    list.appendChild(li);
+  });
+}
+
+// Tạo hoặc cập nhật comment
+async function saveComment() {
+  const editId = document.getElementById("commentEditId").value;
+  const postId = document.getElementById("commentPostId").value;
+  const body = document.getElementById("commentBody").value;
+
+  if (!postId || !body) { alert("Vui lòng nhập đầy đủ!"); return; }
+
+  if (editId) {
+    // Cập nhật (PUT)
+    await fetch(API + "/comments/" + editId, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: editId, postId: postId, body: body })
+    });
+  } else {
+    // Tạo mới - ID tự tăng
+    const newId = await getNextCommentId();
+    await fetch(API + "/comments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: newId, postId: postId, body: body })
+    });
+  }
+
+  resetCommentForm();
+  loadComments();
+}
+
+// Xoá comment (xoá cứng)
+async function deleteComment(id) {
+  if (!confirm("Bạn có chắc muốn xoá comment này?")) return;
+  await fetch(API + "/comments/" + id, { method: "DELETE" });
+  loadComments();
+}
+
+// Điền form để sửa comment
+async function editComment(id) {
+  const res = await fetch(API + "/comments/" + id);
+  const comment = await res.json();
+
+  document.getElementById("commentEditId").value = comment.id;
+  document.getElementById("commentPostId").value = comment.postId;
+  document.getElementById("commentBody").value = comment.body;
+  document.getElementById("commentFormTitle").innerText = "Sửa bình luận (ID: " + comment.id + ")";
+}
+
+function resetCommentForm() {
+  document.getElementById("commentEditId").value = "";
+  document.getElementById("commentPostId").value = "";
+  document.getElementById("commentBody").value = "";
+  document.getElementById("commentFormTitle").innerText = "Tạo bình luận mới";
+}
+
+// Load dữ liệu khi trang mở
+loadPosts();
+loadComments();
+</script>
+
+</body>
+</html>
